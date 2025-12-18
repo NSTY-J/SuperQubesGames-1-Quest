@@ -1,0 +1,717 @@
+{
+    "name": "n8n_yt_auto_offline_clipp_wf",
+    "nodes": [
+      {
+        "parameters": {
+          "jsCode": "// Generate unique execution folder name\nconst executionId = $execution.id;\nconst timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);\nconst folderName = `execution_${timestamp}_${executionId}`;\n\nreturn {\n  json: {\n    ...items[0].json,\n    execution_folder: folderName\n  }\n};"
+        },
+        "id": "567adac4-e153-4745-a535-f0eec6210b37",
+        "name": "Generate Execution Folder",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          240,
+          48
+        ]
+      },
+      {
+        "parameters": {
+          "method": "POST",
+          "url": "http://nca-toolkit:8080/v1/BETA/media/download",
+          "authentication": "genericCredentialType",
+          "genericAuthType": "httpHeaderAuth",
+          "sendBody": true,
+          "specifyBody": "json",
+          "jsonBody": "={\n  \"media_url\": \"https://www.youtube.com/watch?v={{ $json.video_url }}\",\n  \"cloud_upload\": true,\n  \"format\": {\n    \"quality\": \"best\"\n  }\n}",
+          "options": {}
+        },
+        "id": "ace49c79-5148-4465-8726-cca06b8ad2d3",
+        "name": "Download Youtube Video",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.2,
+        "position": [
+          448,
+          48
+        ],
+        "credentials": {
+          "httpHeaderAuth": {
+            "id": "L2bfkwsRqqyuexpv",
+            "name": "Header Auth account"
+          }
+        }
+      },
+      {
+        "parameters": {
+          "method": "POST",
+          "url": "http://nca-toolkit:8080/v1/media/transcribe",
+          "authentication": "genericCredentialType",
+          "genericAuthType": "httpHeaderAuth",
+          "sendBody": true,
+          "specifyBody": "json",
+          "jsonBody": "={\n  \"media_url\": \"{{ $json.response.media.media_url }}\",\n  \"include_srt\": true\n}",
+          "options": {}
+        },
+        "id": "dd153732-2213-4048-88a8-f6b12c2fc3a7",
+        "name": "Transcribe Video",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.1,
+        "position": [
+          640,
+          48
+        ],
+        "credentials": {
+          "httpHeaderAuth": {
+            "id": "L2bfkwsRqqyuexpv",
+            "name": "Header Auth account"
+          }
+        }
+      },
+      {
+        "parameters": {
+          "method": "POST",
+          "url": "http://nca-toolkit:8080/v1/BETA/media/download",
+          "authentication": "genericCredentialType",
+          "genericAuthType": "httpHeaderAuth",
+          "sendBody": true,
+          "specifyBody": "json",
+          "jsonBody": "={\n  \"media_url\": \"https://www.youtube.com/watch?v={{ $('On form submission').item.json.music_url }}\",\n  \"cloud_upload\": true,\n  \"audio\": {\n    \"extract\": true,\n    \"format\": \"mp3\"\n  }\n}",
+          "options": {}
+        },
+        "id": "761a3726-3bb6-4f05-a701-63bcf59d91e1",
+        "name": "Download Youtube Music",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.2,
+        "position": [
+          352,
+          304
+        ],
+        "credentials": {
+          "httpHeaderAuth": {
+            "id": "L2bfkwsRqqyuexpv",
+            "name": "Header Auth account"
+          }
+        }
+      },
+      {
+        "parameters": {
+          "method": "POST",
+          "url": "http://nca-toolkit:8080/v1/media/convert/mp3",
+          "authentication": "genericCredentialType",
+          "genericAuthType": "httpHeaderAuth",
+          "sendBody": true,
+          "specifyBody": "json",
+          "jsonBody": "={\n  \"media_url\": \"{{ $json.response.media.media_url.replace('host.docker.internal','minio') }}\"\n}",
+          "options": {
+            "response": {
+              "response": {
+                "responseFormat": "json"
+              }
+            }
+          }
+        },
+        "id": "09ecd38a-3322-489f-af3c-152804ad5880",
+        "name": "Convert Music to MP3",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.2,
+        "position": [
+          640,
+          304
+        ],
+        "credentials": {
+          "httpHeaderAuth": {
+            "id": "L2bfkwsRqqyuexpv",
+            "name": "Header Auth account"
+          }
+        }
+      },
+      {
+        "parameters": {
+          "fieldToSplitOut": "output",
+          "include": "allOtherFields",
+          "options": {}
+        },
+        "id": "b07292bb-5188-42c3-885a-dc209b759878",
+        "name": "Split Out",
+        "type": "n8n-nodes-base.splitOut",
+        "typeVersion": 1,
+        "position": [
+          848,
+          624
+        ]
+      },
+      {
+        "parameters": {
+          "jsCode": "// Initialize workflow static data to store file URLs\n// This runs ONCE before the loop starts\nconst staticData = $getWorkflowStaticData('global');\nconst executionFolder = $('Generate Execution Folder').item.json.execution_folder;\n\n// Initialize the file URLs array for this execution\nstaticData.fileUrls = [];\nstaticData.executionFolder = executionFolder;\n\n// Add source files (these run once before the loop)\nconst downloadVideoResponse = $('Download Youtube Video').item.json.response;\nconst transcribeResponse = $('Transcribe Video').item.json.response;\nconst downloadMusicResponse = $('Download Youtube Music').item.json.response;\nconst musicResponse = $('Convert Music to MP3').item.json.response;\n\nif (downloadVideoResponse?.media?.media_url) {\n  staticData.fileUrls.push(downloadVideoResponse.media.media_url.replace('host.docker.internal', 'minio'));\n}\n\nif (transcribeResponse?.srt_url) {\n  staticData.fileUrls.push(transcribeResponse.srt_url.replace('host.docker.internal', 'minio'));\n}\n\nif (downloadMusicResponse?.media?.media_url) {\n  staticData.fileUrls.push(downloadMusicResponse.media.media_url.replace('host.docker.internal', 'minio'));\n}\n\nif (musicResponse) {\n  staticData.fileUrls.push(musicResponse.replace('host.docker.internal', 'minio'));\n}\n\nconsole.log(`[Initialize File Tracking] Added ${staticData.fileUrls.length} source files`);\n\n// Pass through the input items to the loop\nreturn $input.all();"
+        },
+        "id": "635fca65-7782-4d6b-b8e8-29164afef537",
+        "name": "Initialize File Tracking",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          856,
+          496
+        ]
+      },
+      {
+        "parameters": {
+          "jsCode": "// Collect all accumulated file URLs from workflow static data\n// This runs AFTER the loop completes\nconst staticData = $getWorkflowStaticData('global');\nconst executionFolder = staticData.executionFolder;\nconst fileUrls = staticData.fileUrls || [];\n\nconsole.log(`[Collect Files] Total files collected: ${fileUrls.length}`);\n\n// Remove duplicates and filter out files already in execution folder\nconst uniqueUrls = [...new Set(fileUrls)].filter(url => {\n  return !url.includes(`/${executionFolder}/`);\n});\n\nconsole.log(`[Collect Files] Unique files to organize: ${uniqueUrls.length}`);\n\nreturn {\n  json: {\n    execution_folder: executionFolder,\n    file_urls: uniqueUrls,\n    total_files: uniqueUrls.length\n  }\n};"
+        },
+        "id": "a1b2c3d4-5678-90ab-cdef-1234567890ab",
+        "name": "Collect Files to Organize",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          1392,
+          400
+        ]
+      },
+      {
+        "parameters": {
+          "method": "POST",
+          "url": "http://minio-organizer:8084/organize",
+          "sendBody": true,
+          "specifyBody": "json",
+          "jsonBody": "={\n  \"execution_folder\": \"{{ $json.execution_folder }}\",\n  \"file_urls\": {{ JSON.stringify($json.file_urls) }}\n}",
+          "options": {
+            "response": {
+              "response": {
+                "responseFormat": "json"
+              }
+            }
+          }
+        },
+        "id": "704dcb86-072e-4931-b1b6-977406458b2a",
+        "name": "Organize Files in MinIO",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.1,
+        "position": [
+          1648,
+          400
+        ]
+      },
+      {
+        "parameters": {
+          "method": "POST",
+          "url": "http://nca-toolkit:8080/v1/video/split",
+          "authentication": "genericCredentialType",
+          "genericAuthType": "httpHeaderAuth",
+          "sendBody": true,
+          "specifyBody": "json",
+          "jsonBody": "={\n    \"video_url\": \"{{ $('Download Youtube Video').item.json.response.media.media_url.replace('host.docker.internal','minio') }}\",\n    \"splits\": [{\n\"start\":\"{{ $json.output.start.replace(',','.') }}\",\n\"end\":\"{{ $json.output.end.replace(',','.') }}\"\n}]\n}",
+          "options": {
+            "response": {
+              "response": {
+                "responseFormat": "json"
+              }
+            }
+          }
+        },
+        "id": "90e5ee9d-d6e6-47ba-9c19-7804530b4d32",
+        "name": "Extract The Clip",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.1,
+        "position": [
+          1360,
+          576
+        ],
+        "credentials": {
+          "httpHeaderAuth": {
+            "id": "L2bfkwsRqqyuexpv",
+            "name": "Header Auth account"
+          }
+        }
+      },
+      {
+        "parameters": {
+          "method": "POST",
+          "url": "http://autocrop:8083/convert",
+          "sendBody": true,
+          "specifyBody": "json",
+          "jsonBody": "={\n  \"input_url\": \"{{ $('Extract The Clip').item.json.response[0].file_url }}\",\n  \"output_key\": \"{{ $('Generate Execution Folder').item.json.execution_folder }}/{{ $('Extract The Clip').item.json.job_id }}_vertical.mp4\"\n}",
+          "options": {
+            "response": {
+              "response": {
+                "responseFormat": "json"
+              }
+            },
+            "timeout": 600000
+          }
+        },
+        "id": "ab3f3d58-1df2-4525-9de5-d5c3bc02f506",
+        "name": "Turn Video To Vertical",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.1,
+        "position": [
+          1568,
+          576
+        ]
+      },
+      {
+        "parameters": {
+          "method": "POST",
+          "url": "http://nca-toolkit:8080/v1/video/caption",
+          "authentication": "genericCredentialType",
+          "genericAuthType": "httpHeaderAuth",
+          "sendBody": true,
+          "specifyBody": "json",
+          "jsonBody": "={\n  \"video_url\": \"{{ $('Turn Video To Vertical').item.json.output_url }}\",\n  \"captions\": \"{{ $('Transcribe Video').item.json.response.srt_url.replace('host.docker.internal','minio') }}\",\n  \"settings\": {\n    \"line_color\": \"#FFFFFF\",\n    \"word_color\": \"#FFFF00\",\n    \"all_caps\": false,\n    \"max_words_per_line\": 3,\n    \"font_size\": 60,\n    \"bold\": false,\n    \"italic\": false,\n    \"underline\": false,\n    \"strikeout\": false,\n    \"outline_width\": 3,\n    \"shadow_offset\": 4,\n    \"style\": \"highlight\",\n    \"font_family\": \"The Bold Font\",\n    \"position\": \"bottom_center\"\n  }\n}",
+          "options": {
+            "response": {
+              "response": {
+                "responseFormat": "json"
+              }
+            }
+          }
+        },
+        "id": "eea74512-5be5-48a1-9d73-11a9536ce91a",
+        "name": "Caption Video",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.1,
+        "position": [
+          1760,
+          576
+        ],
+        "credentials": {
+          "httpHeaderAuth": {
+            "id": "L2bfkwsRqqyuexpv",
+            "name": "Header Auth account"
+          }
+        }
+      },
+      {
+        "parameters": {
+          "method": "POST",
+          "url": "http://nca-toolkit:8080/v1/ffmpeg/compose",
+          "authentication": "genericCredentialType",
+          "genericAuthType": "httpHeaderAuth",
+          "sendBody": true,
+          "specifyBody": "json",
+          "jsonBody": "={\n  \"inputs\": [\n    {\n      \"file_url\": \"{{ $('Caption Video').item.json.response.replace('host.docker.internal','minio') }}\"\n    },\n    {\n      \"file_url\": \"{{ $('Convert Music to MP3').item.json.response }}\"\n    }\n  ],\n  \"outputs\": [\n    {\n      \"options\": [\n        {\n          \"option\": \"-filter_complex\",\n          \"argument\": \"[0:a]volume=1[a0];[1:a]volume={{ $('On form submission').item.json.music_volume || 0.1 }}[a1];[a0][a1]amix=inputs=2:duration=shortest:dropout_transition=2\"\n        },\n        {\n          \"option\": \"-map\",\n          \"argument\": \"0:v\"\n        },\n        {\n          \"option\": \"-c:v\",\n          \"argument\": \"copy\"\n        },\n        {\n          \"option\": \"-c:a\",\n          \"argument\": \"aac\"\n        },\n        {\n          \"option\": \"-shortest\",\n          \"argument\": null\n        }\n      ]\n    }\n  ]\n}",
+          "options": {
+            "response": {
+              "response": {
+                "responseFormat": "json"
+              }
+            }
+          }
+        },
+        "id": "a87fadb3-c47a-4763-9ee6-eb55daa42390",
+        "name": "Add Music to Video",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.1,
+        "position": [
+          1952,
+          576
+        ],
+        "credentials": {
+          "httpHeaderAuth": {
+            "id": "L2bfkwsRqqyuexpv",
+            "name": "Header Auth account"
+          }
+        }
+      },
+      {
+        "parameters": {
+          "url": "=http://minio:9000/nca-toolkit/{{ $('Add Music to Video').item.json.job_id }}_output_0.mp4",
+          "options": {
+            "response": {
+              "response": {
+                "responseFormat": "file"
+              }
+            }
+          }
+        },
+        "id": "1b2541a6-3bac-409e-ba99-72b0ff7345cf",
+        "name": "Download Captioned Video",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.1,
+        "position": [
+          2128,
+          576
+        ]
+      },
+      {
+        "parameters": {
+          "promptType": "define",
+          "text": "={{ $('Transcribe Video').item.json.response.srt }}",
+          "hasOutputParser": true,
+          "messages": {
+            "messageValues": [
+              {
+                "message": "=Analyze the provided transcript and return {{ $('On form submission').item.json.number_of_clips || 5 }} clips of 30-40sec each (This is important please i dont want less) that meet the following criteria:\n\n1- catchy or hooky clips from the transcript\n2- The clips must be from one chunk of the transcript\n3- The clips transcript must be following each other so don't jump from point to another\n4- No out of context clips, the clips must make sense on its own\n\nIMPORTANT: Timestamps MUST be in the exact format HH:MM:SS.mmm (e.g., 01:23:45.678)\n- Use dots (.) not commas (,) for milliseconds\n- Always include 2 digits for hours, minutes, seconds\n- Always include 3 digits for milliseconds\n- Example: 00:01:30.500 NOT 00:01:30,500 or 0:1:30.5\n\nRespond in this exact JSON format:\n[{ \"text\":\"clip transcript here\", \"start\":\"00:00:00.000\", \"end\":\"00:00:40.000\" },{ \"text\":\"clip transcript here\", \"start\":\"00:01:00.000\", \"end\":\"00:01:40.000\" }]"
+              }
+            ]
+          },
+          "batching": {}
+        },
+        "type": "@n8n/n8n-nodes-langchain.chainLlm",
+        "typeVersion": 1.7,
+        "position": [
+          336,
+          624
+        ],
+        "id": "c721751f-e269-47a3-83dd-bea373f8a146",
+        "name": "Basic LLM Chain"
+      },
+      {
+        "parameters": {
+          "jsonSchemaExample": "[{\n\"text\":\"example clip transcript\",\n\"start\":\"00:00:00.000\",\n\"end\":\"00:00:40.000\"\n},\n{\n\"text\":\"example clip transcript\",\n\"start\":\"00:01:00.000\",\n\"end\":\"00:01:40.000\"\n}]\n"
+        },
+        "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+        "typeVersion": 1.3,
+        "position": [
+          528,
+          832
+        ],
+        "id": "29ad752d-b6dd-4516-8eeb-7b6a3e1b3ea0",
+        "name": "Structured Output Parser"
+      },
+      {
+        "parameters": {
+          "options": {}
+        },
+        "type": "n8n-nodes-base.splitInBatches",
+        "typeVersion": 3,
+        "position": [
+          1120,
+          496
+        ],
+        "id": "6202d3e6-de40-4a75-b03b-b181b0d26018",
+        "name": "Loop Over Items"
+      },
+      {
+        "parameters": {
+          "jsCode": "// Track file URLs for this iteration\n// This runs INSIDE the loop for each clip\nconst staticData = $getWorkflowStaticData('global');\n\n// Get file URLs from this iteration\nconst extractResponse = $('Extract The Clip').item.json.response;\nconst captionResponse = $('Caption Video').item.json.response;\nconst musicJobId = $('Add Music to Video').item.json.job_id;\n\n// Add files from this iteration to the accumulated list\nif (extractResponse?.[0]?.file_url) {\n  const url = extractResponse[0].file_url.replace('host.docker.internal', 'minio');\n  staticData.fileUrls.push(url);\n  console.log(`[Track Files] Added split file: ${url}`);\n}\n\nif (captionResponse) {\n  const url = captionResponse.replace('host.docker.internal', 'minio');\n  staticData.fileUrls.push(url);\n  console.log(`[Track Files] Added captioned file: ${url}`);\n}\n\nif (musicJobId) {\n  const url = `http://minio:9000/nca-toolkit/${musicJobId}_output_0.mp4`;\n  staticData.fileUrls.push(url);\n  console.log(`[Track Files] Added final output file: ${url}`);\n}\n\nconsole.log(`[Track Files] Total files tracked so far: ${staticData.fileUrls.length}`);\n\n// Pass through the input to the next node\nreturn $input.all();"
+        },
+        "id": "b2c3d4e5-6789-01ab-cdef-234567890abc",
+        "name": "Track Files",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          2176,
+          576
+        ]
+      },
+      {
+        "parameters": {
+          "operation": "write",
+          "fileName": "=/FINAL/YT_Clips/{{ $node['Download Youtube Video'].json.response.media.title }}_clip[{{ $('Loop Over Items').context.currentRunIndex + 1 }}].mp4",
+          "options": {}
+        },
+        "type": "n8n-nodes-base.readWriteFile",
+        "typeVersion": 1,
+        "position": [
+          2304,
+          576
+        ],
+        "id": "f190a410-cb54-4e19-a262-e0b05eef9f97",
+        "name": "Read/Write Files from Disk"
+      },
+      {
+        "parameters": {
+          "formTitle": "Youtube Clipping",
+          "formFields": {
+            "values": [
+              {
+                "fieldLabel": "video_url",
+                "requiredField": true
+              },
+              {
+                "fieldLabel": "music_url",
+                "requiredField": true
+              },
+              {
+                "fieldLabel": "number_of_clips",
+                "fieldType": "number"
+              },
+              {
+                "fieldLabel": "music_volume",
+                "fieldType": "number"
+              }
+            ]
+          },
+          "options": {}
+        },
+        "type": "n8n-nodes-base.formTrigger",
+        "typeVersion": 2.3,
+        "position": [
+          48,
+          48
+        ],
+        "id": "02ae8613-c2e0-4797-a8aa-456c40b72531",
+        "name": "On form submission",
+        "webhookId": "7d0c1cff-cf74-49e6-97d8-071b56f4e884"
+      },
+      {
+        "parameters": {
+          "model": "google/gemini-2.5-flash",
+          "options": {}
+        },
+        "type": "@n8n/n8n-nodes-langchain.lmChatOpenRouter",
+        "typeVersion": 1,
+        "position": [
+          320,
+          816
+        ],
+        "id": "49d274bc-b9c0-4ec7-91fb-ae041b7321e0",
+        "name": "OpenRouter Chat Model",
+        "credentials": {
+          "openRouterApi": {
+            "id": "MvQPY4H6wWlT2LRH",
+            "name": "OpenRouter account"
+          }
+        }
+      }
+    ],
+    "pinData": {
+      "On form submission": [
+        {
+          "json": {
+            "video_url": "Jy9tNyp03M0",
+            "music_url": "WM2xRw0sb8k",
+            "number_of_clips": 2,
+            "music_volume": 0.1
+          }
+        }
+      ]
+    },
+    "connections": {
+      "Generate Execution Folder": {
+        "main": [
+          [
+            {
+              "node": "Download Youtube Video",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Download Youtube Video": {
+        "main": [
+          [
+            {
+              "node": "Transcribe Video",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Transcribe Video": {
+        "main": [
+          [
+            {
+              "node": "Download Youtube Music",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Download Youtube Music": {
+        "main": [
+          [
+            {
+              "node": "Convert Music to MP3",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Convert Music to MP3": {
+        "main": [
+          [
+            {
+              "node": "Basic LLM Chain",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Split Out": {
+        "main": [
+          [
+            {
+              "node": "Initialize File Tracking",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Initialize File Tracking": {
+        "main": [
+          [
+            {
+              "node": "Loop Over Items",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Extract The Clip": {
+        "main": [
+          [
+            {
+              "node": "Turn Video To Vertical",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Turn Video To Vertical": {
+        "main": [
+          [
+            {
+              "node": "Caption Video",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Caption Video": {
+        "main": [
+          [
+            {
+              "node": "Add Music to Video",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Add Music to Video": {
+        "main": [
+          [
+            {
+              "node": "Download Captioned Video",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Download Captioned Video": {
+        "main": [
+          [
+            {
+              "node": "Track Files",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Track Files": {
+        "main": [
+          [
+            {
+              "node": "Read/Write Files from Disk",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Basic LLM Chain": {
+        "main": [
+          [
+            {
+              "node": "Split Out",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Structured Output Parser": {
+        "ai_outputParser": [
+          [
+            {
+              "node": "Basic LLM Chain",
+              "type": "ai_outputParser",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Loop Over Items": {
+        "main": [
+          [
+            {
+              "node": "Collect Files to Organize",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          [
+            {
+              "node": "Extract The Clip",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Collect Files to Organize": {
+        "main": [
+          [
+            {
+              "node": "Organize Files in MinIO",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Read/Write Files from Disk": {
+        "main": [
+          [
+            {
+              "node": "Loop Over Items",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "On form submission": {
+        "main": [
+          [
+            {
+              "node": "Generate Execution Folder",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "OpenRouter Chat Model": {
+        "ai_languageModel": [
+          [
+            {
+              "node": "Basic LLM Chain",
+              "type": "ai_languageModel",
+              "index": 0
+            }
+          ]
+        ]
+      }
+    },
+    "active": false,
+    "settings": {
+      "executionOrder": "v1"
+    },
+    "versionId": "0eba2505-91a9-4f7f-bfbb-1b16dcf61f01",
+    "meta": {
+      "instanceId": "892fbea65513f49d881404d8908b260e494a706dd53d68015319b447331b9f5d"
+    },
+    "id": "NwNXUbDds2elbqAd",
+    "tags": []
+  }
