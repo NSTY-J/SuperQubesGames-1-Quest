@@ -1,0 +1,66 @@
+# n8n runtime data
+n8n/database.sqlite
+n8n/database.sqlite-shm
+n8n/database.sqlite-wal
+n8n/*.log
+n8n/crash.journal
+n8n/binaryData/
+n8n/git/
+n8n/ssh/
+
+# MinIO data and runtime files
+minio/data/
+minio/*.log
+
+# FFmpeg temporary files
+ffmpeg/files/*.mp4
+ffmpeg/files/*.mp3
+ffmpeg/files/*.wav
+ffmpeg/files/*.avi
+ffmpeg/files/*.mov
+ffmpeg/files/*_input/
+ffmpeg/files/*_output*/
+ffmpeg/files/jobs/*.json
+ffmpeg/files/clips/
+
+# FINAL output files
+FINAL/YT_Clips/*.mp4
+
+# Autocrop cache and models
+autocrop/__pycache__/
+autocrop/*.pt
+autocrop/.cache/
+
+# Keep directory structure
+!ffmpeg/files/.gitkeep
+!ffmpeg/files/jobs/.gitkeep
+!FINAL/YT_Clips/.gitkeep
+
+# Docker volumes
+.volumes/
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# OS files
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+
+# IDE files
+.vscode/
+.idea/
+*.iml
+
+# Logs
+*.log
+logs/
+
+# Temporary files
+tmp/
+temp/
+*.tmp
