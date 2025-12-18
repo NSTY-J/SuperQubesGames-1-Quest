@@ -1,7 +1,9 @@
 FROM python:3.11-slim
 
-# Install system dependencies
-RUN apt-get update && apt-get install -y \
+# Install system dependencies with BuildKit cache
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    apt-get update && apt-get install -y \
     ffmpeg \
     libgl1 \
     libglib2.0-0 \
@@ -14,9 +16,18 @@ RUN apt-get update && apt-get install -y \
 # Set working directory
 WORKDIR /app
 
-# Copy requirements and install Python dependencies
+# Install CPU-only torch first (much smaller than CUDA version ~150MB vs ~900MB)
+# This saves significant download time for users with slow internet
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install --no-cache-dir --timeout=1000 --retries=5 \
+    --index-url https://download.pytorch.org/whl/cpu \
+    torch
+
+# Copy requirements and install remaining Python dependencies
+# Use BuildKit cache mount for faster pip installs on subsequent builds
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install --no-cache-dir --timeout=1000 --retries=5 -r requirements.txt
 
 # Copy the scripts
 COPY main.py .

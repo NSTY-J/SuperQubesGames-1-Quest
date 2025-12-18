@@ -3,8 +3,10 @@ FROM python:3.11-slim
 WORKDIR /app
 
 # Copy requirements and install dependencies
+# Use BuildKit cache mount for faster pip installs on subsequent builds
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install --no-cache-dir -r requirements.txt
 
 # Copy application files
 COPY organize.py .

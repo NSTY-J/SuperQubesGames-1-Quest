@@ -84,7 +84,8 @@ services:
       - -c
       - |
         echo "Waiting for MinIO to be ready..."
-        for i in {1..30}; do
+        i=1
+        while [ $i -le 30 ]; do
           if /usr/bin/mc alias set myminio http://minio:9000 minioadmin minioadmin; then
             echo "MinIO is ready, setting up bucket..."
             /usr/bin/mc mb myminio/nca-toolkit --ignore-existing
@@ -94,6 +95,7 @@ services:
           else
             echo "Attempt $i: MinIO not ready yet, waiting 2 seconds..."
             sleep 2
+            i=$((i + 1))
           fi
         done
         echo "Failed to connect to MinIO after 30 attempts"

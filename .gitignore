@@ -12,8 +12,8 @@ n8n/ssh/
 minio/data/
 minio/*.log
 
-# Implementation_docs
-Implementation_docs/
+# Implementation docs
+Implementations_Docs/
 
 # FFmpeg temporary files
 ffmpeg/files/*.mp4
