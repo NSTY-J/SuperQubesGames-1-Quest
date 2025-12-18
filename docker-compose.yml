@@ -1,7 +1,5 @@
 version: '3.8'
 
-name: n8n-nca-minio
-
 services:
   init-permissions:
     image: busybox:latest
