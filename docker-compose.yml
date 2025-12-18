@@ -1,4 +1,7 @@
+version: '3.8'
+
 name: n8n-nca-minio
+
 services:
   init-permissions:
     image: busybox:latest
@@ -35,7 +38,6 @@ services:
     depends_on:
       init-permissions:
         condition: service_completed_successfully
-        required: true
     deploy:
       resources:
         limits:
@@ -72,7 +74,6 @@ services:
     depends_on:
       minio:
         condition: service_started
-        required: true
     deploy:
       resources:
         limits:
@@ -119,7 +120,6 @@ services:
     depends_on:
       init-permissions:
         condition: service_completed_successfully
-        required: true
     deploy:
       resources:
         limits:
@@ -164,10 +164,8 @@ services:
     depends_on:
       minio:
         condition: service_started
-        required: true
       minio-init:
         condition: service_started
-        required: true
     deploy:
       resources:
         limits:
