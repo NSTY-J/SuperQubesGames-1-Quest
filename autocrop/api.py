@@ -92,3 +92,109 @@ def convert_video():
         temp_output = tempfile.NamedTemporaryFile(suffix='.mp4', delete=False)
         temp_input.close()
         temp_output.close()
+
+        # Download input file from MinIO
+        try:
+            s3_client.download_file(bucket, input_key, temp_input.name)
+            logger.info(f"Downloaded input file to {temp_input.name}")
+        except Exception as e:
+            logger.error(f"Failed to download from MinIO: {e}")
+            return jsonify({
+                "success": False,
+                "error": f"Failed to download input file from MinIO: {str(e)}"
+            }), 404
+
+        # Determine output key
+        if 'output_key' in data and data['output_key']:
+            output_key = data['output_key']
+        else:
+            # Generate output key with _vertical suffix
+            base_name = os.path.splitext(input_key)[0]
+            output_key = f"{base_name}_vertical.mp4"
+
+        logger.info(f"Converting video: {input_key} -> {output_key}")
+
+        # Run the autocrop script
+        cmd = [
+            'python', '/app/main.py',
+            '--input', temp_input.name,
+            '--output', temp_output.name
+        ]
+
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=600  # 10 minute timeout
+        )
+
+        if result.returncode != 0:
+            logger.error(f"Autocrop failed: {result.stderr}")
+            return jsonify({
+                "success": False,
+                "error": "Video conversion failed",
+                "details": result.stderr
+            }), 500
+
+        # Check if output file was created
+        if not os.path.exists(temp_output.name):
+            logger.error(f"Output file was not created: {temp_output.name}")
+            logger.error(f"Autocrop stdout: {result.stdout}")
+            logger.error(f"Autocrop stderr: {result.stderr}")
+            return jsonify({
+                "success": False,
+                "error": f"Output file was not created: {temp_output.name}",
+                "stdout": result.stdout,
+                "stderr": result.stderr
+            }), 500
+
+        # Upload output file to MinIO
+        try:
+            s3_client.upload_file(temp_output.name, bucket, output_key)
+            output_url = f"{MINIO_ENDPOINT}/{bucket}/{output_key}"
+            logger.info(f"Uploaded output file to MinIO: {output_url}")
+        except Exception as e:
+            logger.error(f"Failed to upload to MinIO: {e}")
+            logger.error(f"Output file exists: {os.path.exists(temp_output.name)}")
+            logger.error(f"Output file path: {temp_output.name}")
+            return jsonify({
+                "success": False,
+                "error": f"Failed to upload output file to MinIO: {str(e)}"
+            }), 500
+
+        return jsonify({
+            "success": True,
+            "output_url": output_url,
+            "output_key": output_key,
+            "message": "Video converted successfully",
+            "log": result.stdout
+        }), 200
+
+    except subprocess.TimeoutExpired:
+        return jsonify({
+            "success": False,
+            "error": "Video conversion timed out (max 10 minutes)"
+        }), 408
+
+    except Exception as e:
+        logger.exception("Unexpected error during video conversion")
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
+
+    finally:
+        # Clean up temporary files
+        if temp_input and os.path.exists(temp_input.name):
+            try:
+                os.unlink(temp_input.name)
+            except:
+                pass
+        if temp_output and os.path.exists(temp_output.name):
+            try:
+                os.unlink(temp_output.name)
+            except:
+                pass
+
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=8083, debug=False)
