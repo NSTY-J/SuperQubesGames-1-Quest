@@ -1,0 +1,8 @@
+opencv-python
+scenedetect[opencv]
+ultralytics
+torch
+torchvision
+tqdm
+boto3
+flask
